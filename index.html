@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>날벌레 출현율 GRU</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one reading column; the live demo is a two-pane instrument panel that stacks on phones */
+:root {
+  --bg: #F4F5FA; --surface: #FFFFFF; --ink: #15162A; --muted: #5B5E78; --line: #DCDEEA;
+  --uv: #6A3FD8; --uv-soft: #EEE8FD; --sky: #0089BF; --rain: #D63B42; --code-bg: #15162A; --code-ink: #E3E5F2; --code-cmt: #7FB685; --code-key: #8DB7FF;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E0F1C; --surface: #171930; --ink: #ECEDF7; --muted: #A1A4C2; --line: #2B2E4D;
+  --uv: #A487FF; --uv-soft: #2A2350; --sky: #4CC3F5; --rain: #FF7376; --code-bg: #0A0B16; --code-ink: #E3E5F2; --code-cmt: #8CC492; --code-key: #9CC2FF; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0E0F1C; --surface: #171930; --ink: #ECEDF7; --muted: #A1A4C2; --line: #2B2E4D;
+  --uv: #A487FF; --uv-soft: #2A2350; --sky: #4CC3F5; --rain: #FF7376; --code-bg: #0A0B16; --code-ink: #E3E5F2; --code-cmt: #8CC492; --code-key: #9CC2FF; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.65;
+  padding-block: 40px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+.wrap { max-width: 960px; margin: 0 auto; display: grid; gap: 44px }
+h1, h2, h3 { margin: 0; text-wrap: balance; line-height: 1.25 }
+h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.02em }
+h2 { font-size: 22px; font-weight: 700 }
+p { margin: 0 }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; color: var(--uv); font-weight: 600 }
+.lede { color: var(--muted); max-width: 62ch; margin-top: 12px }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px }
+.chip { font-family: var(--f-mono); font-size: 12.5px; border: 1px solid var(--line); background: var(--surface); padding: 4px 10px; border-radius: 999px; color: var(--muted) }
+.chip b { color: var(--ink); font-weight: 500 }
+section { display: grid; gap: 16px }
+.sub { color: var(--muted); max-width: 64ch }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; counter-reset: s }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 6px; min-width: 0 }
+.step h3 { font-size: 16px; display: flex; gap: 8px; align-items: baseline }
+.step h3::before { counter-increment: s; content: counter(s); font-family: var(--f-mono); font-size: 12px; color: var(--uv); }
+.step p { color: var(--muted); font-size: 14px }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); overflow: hidden }
+.controls { padding: 20px; display: grid; gap: 16px; border-right: 1px solid var(--line); align-content: start }
+.field { display: grid; gap: 6px }
+.field label { font-size: 13px; font-weight: 600; display: flex; justify-content: space-between }
+.field label output { font-family: var(--f-mono); font-weight: 500; color: var(--uv) }
+select, input[type=range] { width: 100%; font: inherit }
+select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink) }
+input[type=range] { accent-color: var(--uv) }
+select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--uv); outline-offset: 2px }
+.presets { display: flex; flex-wrap: wrap; gap: 6px }
+.presets button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 999px; padding: 4px 10px; cursor: pointer }
+.presets button:hover { border-color: var(--uv) }
+.readout { padding: 20px 22px; display: grid; gap: 14px; align-content: start; min-width: 0 }
+.big { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap }
+.pct { font-family: var(--f-mono); font-size: 56px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.03em }
+.pill { font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px; border: 1px solid transparent }
+.pill.l2 { background: var(--uv); color: #fff }
+.pill.l1 { background: var(--uv-soft); color: var(--uv); border-color: var(--uv) }
+.pill.l0 { background: var(--bg); color: var(--muted); border-color: var(--line) }
+.why { font-size: 14px; color: var(--muted) }
+.why b { color: var(--ink) }
+.chart { width: 100%; height: auto; display: block }
+.chart text { font-family: var(--f-mono); font-size: 10px; fill: var(--muted) }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--muted) }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c) }
+.note { font-size: 13px; color: var(--muted); border-left: 0; background: var(--uv-soft); padding: 10px 14px; border-radius: 10px }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line) }
+th { font-size: 12.5px; color: var(--muted); font-weight: 600 }
+td.num { font-family: var(--f-mono); text-align: right }
+tr.best td { color: var(--uv); font-weight: 600 }
+.bar { height: 8px; background: var(--line); border-radius: 4px; position: relative; min-width: 80px }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--muted); border-radius: 4px }
+tr.best .bar i { background: var(--uv) }
+.tablebox { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow-x: auto }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap }
+.tabs button { font: inherit; font-size: 13.5px; padding: 7px 14px; border-radius: 8px 8px 0 0; border: 1px solid var(--line); border-bottom: 0; background: var(--bg); color: var(--muted); cursor: pointer }
+.tabs button[aria-selected=true] { background: var(--code-bg); color: var(--code-ink); border-color: var(--code-bg) }
+.code { background: var(--code-bg); border-radius: 0 12px 12px 12px; position: relative; min-width: 0 }
+.code pre { margin: 0; padding: 18px 20px; overflow-x: auto; font-family: var(--f-mono); font-size: 12.8px; line-height: 1.6; color: var(--code-ink); tab-size: 4 }
+.code .cm { color: var(--code-cmt) } .code .kw { color: var(--code-key) }
+.copy { position: absolute; top: 10px; right: 10px; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid #3A3D5C; background: #24264A; color: var(--code-ink); cursor: pointer }
+.filemeta { font-family: var(--f-mono); font-size: 12px; color: var(--muted) }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 4px }
+@media (max-width: 720px) {
+  .steps { grid-template-columns: 1fr }
+  .panel { grid-template-columns: 1fr }
+  .controls { border-right: 0; border-bottom: 1px solid var(--line) }
+  .pct { font-size: 46px }
+}
+@media (prefers-reduced-motion: no-preference) { .pct, .pill { transition: color .2s, background .2s } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">엄물포 · 2026 AI동행 피지컬AI · 대전대신고 STEMINUS</div>
+    <h1>날벌레 출현율 GRU</h1>
+    <p class="lede">최근 기온·습도·강우·조도·시각의 흐름을 보고 지금 날벌레가 얼마나 나올지(출현율 0~100%) 계산한 뒤, 395nm UV-A LED를 고출력·저출력·소등 3단계로 정하는 알고리즘입니다.</p>
+    <div class="chips">
+      <span class="chip">입력 <b>6개 × 24시간</b></span>
+      <span class="chip">GRU 은닉 상태 <b>16칸</b></span>
+      <span class="chip">가중치 <b>1,121개</b></span>
+      <span class="chip">출력 <b>출현율 0~1</b></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="flow-h">
+    <h2 id="flow-h">작동 흐름</h2>
+    <div class="steps">
+      <div class="step"><h3>인지</h3><p>아두이노 나노가 온습도·강우·조도 센서와 RTC 시각을 100ms마다 노트북으로 보냅니다. 노트북은 1분 평균을 냅니다.</p></div>
+      <div class="step"><h3>판단</h3><p>비가 오거나 19:00~23:59 밖이면 바로 소등. 나머지 경우 GRU가 최근 24시간 흐름으로 출현율을 계산합니다.</p></div>
+      <div class="step"><h3>행동</h3><p>출현율 40% 이상 고출력, 10~40% 저출력, 10% 미만 소등. 아두이노는 비가 감지되면 명령과 상관없이 먼저 끕니다.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="demo-h">
+    <h2 id="demo-h">직접 돌려보기</h2>
+    <p class="sub">문헌 기반 가상 데이터로 학습한 GRU 가중치를 이 페이지 안에서 그대로 계산합니다. 조건을 바꾸면 최근 24시간 날씨를 만들어 넣고 출현율을 다시 계산합니다.</p>
+    <div class="panel">
+      <div class="controls">
+        <div class="presets" role="group" aria-label="예시 상황">
+          <button type="button" data-p="peak">맑은 여름 저녁</button>
+          <button type="button" data-p="after">비 그친 직후</button>
+          <button type="button" data-p="humid">습한 밤</button>
+        </div>
+        <div class="field"><label for="month">월 <output id="month-o"></output></label>
+          <select id="month"><option value="5">5월</option><option value="6">6월</option><option value="7" selected>7월</option><option value="8">8월</option><option value="9">9월</option></select></div>
+        <div class="field"><label for="hour">현재 시각 <output id="hour-o"></output></label>
+          <input id="hour" type="range" min="17" max="25" step="1" value="21"></div>
+        <div class="field"><label for="temp">현재 기온 <output id="temp-o"></output></label>
+          <input id="temp" type="range" min="14" max="32" step="0.5" value="27"></div>
+        <div class="field"><label for="hum">현재 습도 <output id="hum-o"></output></label>
+          <input id="hum" type="range" min="60" max="98" step="1" value="68"></div>
+        <div class="field"><label for="rain">비</label>
+          <select id="rain"><option value="-1" selected>최근 24시간 안 옴</option><option value="0">지금 오는 중</option><option value="1">1시간 전 그침</option><option value="2">2시간 전 그침</option><option value="3">3시간 전 그침</option><option value="6">6시간 전 그침</option><option value="12">12시간 전 그침</option></select></div>
+      </div>
+      <div class="readout" aria-live="polite">
+        <div class="big"><span class="pct" id="pct">0%</span><span class="pill l0" id="pill">소등</span></div>
+        <p class="why" id="why"></p>
+        <svg class="chart" id="chart" viewBox="0 0 560 190" role="img" aria-label="최근 24시간 GRU 출현율"></svg>
+        <div class="legend"><span style="--c: var(--uv)">GRU 출현율</span><span style="--c: var(--rain)">비</span><span style="--c: var(--line)">운영 시간 19~24시</span></div>
+      </div>
+    </div>
+    <p class="note">학습 데이터는 실측이 아니라 논문 경향(습도 70% 이상 감소, 일몰 후 0~3시간 집중, 비 그친 직후 비행 중단 등)으로 만든 가상 데이터입니다. 실제 하천 성능은 현장 트랩 개체 수로 다시 학습해 확인합니다.</p>
+  </section>
+
+  <section aria-labelledby="eval-h">
+    <h2 id="eval-h">검증 결과 (가상 2년차 데이터)</h2>
+    <p class="sub">1년차(5~9월)로 학습하고 처음 보는 2년차로 평가했습니다. RMSE는 평균적으로 틀린 정도라서 낮을수록 좋습니다.</p>
+    <div class="tablebox"><table>
+      <thead><tr><th>방법</th><th>설명</th><th style="text-align:right">RMSE</th><th style="width:30%"></th></tr></thead>
+      <tbody>
+        <tr><td>조건문 추정</td><td>시간·비·습도 규칙으로 나눈 칸의 평균</td><td class="num">0.138</td><td><div class="bar"><i style="width:100%"></i></div></td></tr>
+        <tr><td>다중 선형 회귀</td><td>각 요인 × 가중치의 합 (R² 0.65)</td><td class="num">0.107</td><td><div class="bar"><i style="width:77.5%"></i></div></td></tr>
+        <tr><td>기억 없는 신경망</td><td>GRU와 같은 입력, 지금 값만 사용 (R² 0.80)</td><td class="num">0.081</td><td><div class="bar"><i style="width:58.7%"></i></div></td></tr>
+        <tr class="best"><td>GRU</td><td>과거 흐름을 기억 (R² 0.93, r 0.96)</td><td class="num">0.048</td><td><div class="bar"><i style="width:34.8%"></i></div></td></tr>
+      </tbody></table></div>
+    <p class="sub">같은 운영 시간·강우 규칙에서 조건문과 비교하면 LED 가동 시간은 693시간에서 387시간으로 44% 줄고, 날벌레 활동 포착률은 87.0%에서 82.4%로 4.6%p 줄었습니다.</p>
+  </section>
+
+  <section aria-labelledby="code-h">
+    <h2 id="code-h">코드</h2>
+    <p class="sub">아두이노는 센서 전송과 안전 규칙, 노트북은 GRU 판단을 맡습니다. 핀 번호와 센서 종류는 실제 회로에 맞게 바꿔 쓰세요.</p>
+    <div>
+      <div class="tabs" role="tablist">
+        <button role="tab" id="t-ino" aria-selected="true" aria-controls="c-ino">bug_lure.ino</button>
+        <button role="tab" id="t-run" aria-selected="false" aria-controls="c-run">run_device.py</button>
+        <button role="tab" id="t-train" aria-selected="false" aria-controls="c-train">train_gru.py</button>
+      </div>
+      <div class="code" id="c-ino" role="tabpanel" aria-labelledby="t-ino"><button class="copy" type="button">복사</button><pre><code><span class="cm">// 엄물포 | 기상 반응형 395nm 날벌레 유인 장치 (아두이노 나노)</span>
+<span class="cm">// 역할: 센서 값 전송(인지) + 강우 안전 규칙 + LED 출력(행동)</span>
+#include &lt;Wire.h&gt;
+#include &lt;RTClib.h&gt;     <span class="cm">// RTC 모듈 (DS3231 기준)</span>
+#include &lt;DHT.h&gt;        <span class="cm">// 온습도 센서 (DHT22 기준)</span>
+
+#define DHT_PIN   2
+#define RAIN_PIN  3     <span class="cm">// 강우 센서 DO: 젖으면 LOW</span>
+#define LUX_PIN   A0    <span class="cm">// 조도 센서(CdS): 밝을수록 값이 커지게 배선</span>
+#define LED_PIN   9     <span class="cm">// MOSFET 게이트 → 395nm LED (PWM)</span>
+
+DHT dht(DHT_PIN, DHT22);
+RTC_DS3231 rtc;
+
+int level = 0;                       <span class="cm">// 파이썬이 보낸 단계: 0 소등, 1 저출력, 2 고출력</span>
+float temp = NAN, hum = NAN;
+unsigned long lastSend = 0, lastDht = 0;
+
+void setup() {
+  Serial.begin(9600);
+  dht.begin();
+  rtc.begin();
+  pinMode(RAIN_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void loop() {
+  bool raining = digitalRead(RAIN_PIN) == LOW;
+
+  <span class="cm">// 1) 파이썬(GRU)에서 온 명령 읽기: '0' / '1' / '2'</span>
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c &gt;= '0' &amp;&amp; c &lt;= '2') level = c - '0';
+  }
+
+  <span class="cm">// 2) 온습도는 2초마다만 읽기 (DHT22는 너무 자주 읽으면 오류)</span>
+  if (millis() - lastDht &gt;= 2000) {
+    lastDht = millis();
+    temp = dht.readTemperature();
+    hum  = dht.readHumidity();
+  }
+
+  <span class="cm">// 3) 100ms마다 센서 값 전송: 기온,습도,강우,조도,시</span>
+  if (millis() - lastSend &gt;= 100) {
+    lastSend = millis();
+    DateTime now = rtc.now();
+    Serial.print(temp);  Serial.print(',');
+    Serial.print(hum);   Serial.print(',');
+    Serial.print(raining ? 1 : 0); Serial.print(',');
+    Serial.print(analogRead(LUX_PIN)); Serial.print(',');
+    Serial.println(now.hour());
+  }
+
+  <span class="cm">// 4) 행동: 비가 오면 AI 명령과 상관없이 소등 (안전 규칙 최우선)</span>
+  int pwm = 0;
+  if (!raining) {
+    if (level == 2) pwm = 255;       <span class="cm">// 고출력</span>
+    else if (level == 1) pwm = 100;  <span class="cm">// 저출력</span>
+  }
+  analogWrite(LED_PIN, pwm);
+}</code></pre></div>
+      <div class="code" id="c-run" role="tabpanel" aria-labelledby="t-run" hidden><button class="copy" type="button">복사</button><pre><code><span class="cm">"""엄물포 | 실시간 판단 루프 (노트북)</span>
+아두이노 → 센서 값 → 1분 평균 → GRU 출현율 → 3단계 → 아두이노
+<span class="cm">"""</span>
+import time
+from collections import deque
+import numpy as np
+import serial
+from tensorflow import keras
+
+PORT, BAUD = "COM3", 9600          <span class="cm"># 장치 관리자에서 포트 확인</span>
+HIGH, LOW = 0.40, 0.10             <span class="cm"># 출현율 기준: 40% 이상 고출력, 10% 이상 저출력</span>
+
+model = keras.models.load_model("gru_bug.keras")
+ser = serial.Serial(PORT, BAUD, timeout=1)
+hours = deque(maxlen=24)           <span class="cm"># 최근 24시간 (1시간 평균값)</span>
+this_hour = []                     <span class="cm"># 이번 시간의 1분 평균값들</span>
+
+
+def read_minute():
+<span class="cm">    """1분 동안 들어온 값을 평균. 고장 값(nan)은 버림"""</span>
+    ser.reset_input_buffer()       <span class="cm"># 쌓여 있던 옛 데이터 버리기 (3~5초 지연 해결)</span>
+    rows, end = [], time.time() + 60
+    while time.time() &lt; end:
+        try:
+            t, h, rain, lux, hr = map(float, ser.readline().decode().strip().split(","))
+        except ValueError:
+            continue
+        if np.isnan(t) or np.isnan(h):
+            continue
+        rows.append([t, h, rain, lux / 1023, hr])
+    return np.mean(rows, axis=0) if rows else None
+
+
+def features(t, h, rain, lux, hr):
+    return [(t - 22) / 6, (h - 70) / 15, rain, lux,
+            np.sin(2 * np.pi * hr / 24), np.cos(2 * np.pi * hr / 24)]
+
+
+while True:
+    m = read_minute()
+    if m is None:                                   <span class="cm"># 센서 이상 → 대체 모드</span>
+        ser.write(b"1")                             <span class="cm"># 기존 조건문처럼 저출력 유지</span>
+        continue
+    t, h, rain, lux, hr = m
+    this_hour.append(features(t, h, rain &gt;= 0.5, lux, round(hr)))
+    cur = np.mean(this_hour, axis=0)                <span class="cm"># 이번 시간 평균(진행 중)</span>
+    recent = (list(hours) + [cur])[-24:]            <span class="cm"># 최근 24시간</span>
+    if len(this_hour) == 60:                        <span class="cm"># 1시간이 차면 기록</span>
+        hours.append(cur)
+        this_hour = []
+
+    <span class="cm"># 판단 1: 안전 규칙이 AI보다 먼저</span>
+    in_time = 19 &lt;= round(hr) &lt;= 23
+    if rain &gt;= 0.5 or not in_time:
+        level = 0
+    elif len(recent) &lt; 24:                          <span class="cm"># 기록이 쌓이기 전에는 조건문</span>
+        level = 2 if h &gt;= 70 else 1
+    else:
+        <span class="cm"># 판단 2: 최근 24시간 → GRU 출현율</span>
+        p = float(model.predict(np.array(recent)[None], verbose=0)[0, 0])
+        level = 2 if p &gt;= HIGH else 1 if p &gt;= LOW else 0
+        print(f"{round(hr)}시  출현율 {p:.0%}  → 단계 {level}")
+
+    ser.write(str(level).encode())                  <span class="cm"># 행동: 아두이노로 전송</span></code></pre></div>
+      <div class="code" id="c-train" role="tabpanel" aria-labelledby="t-train" hidden><button class="copy" type="button">복사</button><pre><code><span class="cm">"""엄물포 | GRU 날벌레 출현율 모델 학습 (TensorFlow/Keras)</span>
+virtual_data.csv 열: time, temp, hum, rain, lux, bug_count  (1시간 간격)
+ - 지금은 문헌 기반 가상 데이터, 이후 현장 트랩 개체 수로 교체
+<span class="cm">"""</span>
+import numpy as np
+import pandas as pd
+from tensorflow import keras
+from tensorflow.keras import layers
+
+WIN = 24                                   <span class="cm"># 최근 24시간을 보고 예측</span>
+FEATS = ["temp", "hum", "rain", "lux", "hour_sin", "hour_cos"]
+
+df = pd.read_csv("virtual_data.csv", parse_dates=["time"])
+hour = df["time"].dt.hour
+df["hour_sin"] = np.sin(2 * np.pi * hour / 24)   <span class="cm"># 23시와 0시가 가깝도록 시각을 원 위의 점으로</span>
+df["hour_cos"] = np.cos(2 * np.pi * hour / 24)
+df["temp"] = (df["temp"] - 22) / 6               <span class="cm"># 표준화: 단위가 다른 값을 비슷한 크기로</span>
+df["hum"] = (df["hum"] - 70) / 15
+df["lux"] = df["lux"].clip(0, 1)                 <span class="cm"># 0(어두움) ~ 1(밝음)으로 맞춘 값</span>
+
+<span class="cm"># 출현율 0~1: 상위 1% 개체 수를 1로 보고 나눔</span>
+y_all = (df["bug_count"] / df["bug_count"].quantile(0.99)).clip(0, 1).values
+X_all = df[FEATS].values.astype("float32")
+
+<span class="cm"># 슬라이딩 윈도우: [i-23 ... i] 24시간 → i시점 출현율</span>
+X = np.stack([X_all[i - WIN + 1:i + 1] for i in range(WIN - 1, len(df))])
+y = y_all[WIN - 1:]
+
+<span class="cm"># 시간 순서대로 나누기: 앞 절반(1년차) 학습, 뒤 절반(2년차) 평가</span>
+split = len(X) // 2
+X_tr, y_tr, X_te, y_te = X[:split], y[:split], X[split:], y[split:]
+
+model = keras.Sequential([
+    layers.Input(shape=(WIN, len(FEATS))),
+    layers.GRU(16),                         <span class="cm"># 은닉 상태(기억) 16칸</span>
+    layers.Dense(1, activation="sigmoid"),  <span class="cm"># 출현율 0~1</span>
+])
+model.compile(optimizer="adam", loss="mse")
+model.fit(X_tr, y_tr, epochs=30, batch_size=32, validation_split=0.1, verbose=2)
+
+pred = model.predict(X_te).ravel()
+rmse = np.sqrt(np.mean((pred - y_te) ** 2))
+r2 = 1 - np.sum((pred - y_te) ** 2) / np.sum((y_te - y_te.mean()) ** 2)
+r = np.corrcoef(pred, y_te)[0, 1]
+print(f"RMSE {rmse:.3f}  R² {r2:.3f}  r {r:.3f}")   <span class="cm"># 성공 기준: r ≥ 0.7</span>
+
+model.save("gru_bug.keras")</code></pre></div>
+    </div>
+    <p class="filemeta">필요 라이브러리: Arduino — RTClib, DHT sensor library · Python — tensorflow, numpy, pandas, pyserial</p>
+  </section>
+
+  <footer>
+    <span>엄물포 · 오범근, 이우찬, 심동현, 조연준 · 지도교사 엄하람 · 멘토 박천표</span>
+    <span>AI 환경 데이터 기반 기상 반응형 친환경 날벌레 유인 시스템</span>
+  </footer>
+</div>
+
+<script>
+const W = {"Wz": [[1.03778, 1.112, -0.66026, 0.0536, 0.04065, 0.25405, -0.15825, 0.05874, 0.28843, 0.15383, -0.65655, -0.41185, -0.08415, -0.67247, 0.35889, 0.19077], [0.68426, 0.29352, 0.07287, -0.15952, -0.52695, 0.35799, -1.4502, 1.22988, -0.97421, 0.67505, -0.18464, -0.6522, -0.03189, -0.8646, -0.49266, -1.27908], [1.36654, -1.40335, 1.83965, 0.73037, -2.58906, -1.12346, -1.04358, 0.08795, -0.85994, 0.53173, -1.52145, 0.26445, -0.03854, 1.58091, 0.71833, 0.20098], [-0.94658, -0.98832, -0.36732, 0.75581, -0.22811, -0.89526, 0.07625, -0.87518, 0.45616, -0.05647, -1.40406, 0.7825, 0.34225, -0.57127, -1.02484, 0.09857], [0.91066, -0.55704, -0.30774, -0.56213, 0.05528, -0.39269, 0.52479, 0.4048, -0.2172, -0.41634, 0.00717, 1.53752, -1.34942, -0.68213, -0.75192, -0.3119], [0.67329, 0.37777, -0.26192, 0.81842, -0.3365, -1.52337, 0.45382, 1.08187, -0.01573, 0.91377, 0.68608, -0.46972, -0.30243, 0.33765, 0.51288, 0.00773]], "Uz": [[-0.42754, -0.40021, -0.22857, 0.89984, -0.15784, -0.11585, -0.01058, -0.53327, -0.36161, -0.20375, -0.06736, 0.27952, 0.74921, 0.02819, 0.08786, 0.71473], [-0.59839, 1.42371, 0.75962, -0.52736, -0.47878, 0.3004, -0.67643, -0.77692, -0.68397, -0.47534, -0.76207, 0.32907, -0.78003, -0.88534, 0.30377, -0.22939], [0.02779, -0.29487, -0.67047, -0.33847, 0.18959, 0.00175, 0.98111, -1.02083, -1.11214, -0.13214, -0.00556, 0.03877, -0.67601, -1.66262, -0.59772, 0.01488], [0.24064, -0.17531, 0.12221, -0.22207, 0.36536, -0.53262, 0.38146, -0.78904, -0.11214, -0.09218, 1.06011, -0.47148, 0.89436, -0.24381, 0.92603, -0.4868], [-1.19088, 0.80779, -0.52141, 0.06449, -0.4097, -0.13331, 0.09487, -0.64539, 0.06848, -0.45849, -0.72214, 1.41397, 0.85059, 0.56103, 0.69226, 0.84397], [0.31044, -0.41726, 0.39571, 0.86407, 0.74245, -0.70576, 0.00258, 0.01365, 0.36396, -0.62582, 1.13353, 0.11904, 0.148, 1.49673, 0.73811, 0.39806], [-0.66102, 0.07087, 0.80612, -0.43491, -0.34608, 0.25792, 0.03476, 0.31754, -0.98317, -0.50938, 0.31525, -0.52221, -0.06886, -0.93077, 0.17193, -0.32539], [-0.13282, -0.03, 0.86659, -0.97301, -0.43264, 0.52231, 1.15033, -0.07241, -0.92041, -1.19828, -0.39754, -0.96846, -2.10895, 0.18489, -0.48691, -0.20252], [0.43418, -0.89084, 1.98531, -0.02917, -0.37559, -0.34414, -0.06945, -0.09057, -2.09702, -1.59095, -0.22262, -1.48176, -0.68308, -0.71833, 0.21688, -0.47243], [-1.01581, 0.13453, 0.52355, 1.07393, -1.53765, 0.34997, -0.11089, 0.44083, -0.13375, 1.1038, 0.32169, -0.07419, 1.12788, -0.16463, 0.4241, -0.22317], [0.44565, 0.06227, 0.54091, -0.64066, 1.12246, 0.91845, -0.65659, 0.1378, -0.35293, 0.49491, 0.26252, -0.92971, 0.67456, -0.02165, 1.09835, 0.19589], [-0.56376, -0.17304, -0.69798, 0.18836, -0.59541, 1.08984, 0.26878, 0.07681, -0.60938, 0.14691, 0.47054, 1.34902, -0.48559, -0.43183, -0.74872, 0.38102], [0.30448, 0.305, -0.07912, -0.45198, 0.19875, 1.07783, -1.8204, 1.67674, 0.51674, -0.66877, -0.5564, 0.68312, 0.55723, 0.37014, -1.19567, 0.12199], [0.88612, -0.73789, -0.09608, 0.1553, 0.51566, -0.33273, -0.36317, 0.54217, 0.48112, 1.34663, 0.7764, -0.08432, 0.26955, -0.52723, 1.21156, 0.10524], [-0.91393, -0.14903, 0.3083, 0.53554, 0.9175, 1.01378, -0.72413, -1.67641, -0.122, 0.11462, 0.00263, 0.69656, 0.80855, 0.53825, 0.02512, 0.21331], [0.38932, 0.42549, -0.68196, 0.13666, 0.15336, 0.29671, -0.71796, -0.43675, -0.70825, 0.27981, -0.28445, 0.19143, -0.06243, -0.02486, 0.26267, 0.23569]], "bz": [-0.2068, -0.60857, -1.12108, 0.66842, 0.02639, -0.09548, -0.35691, 0.10983, -0.20946, 0.21454, -0.10139, 0.14176, 0.19888, 0.00592, -0.41486, -0.00999], "Wr": [[0.60429, 0.20001, 0.20769, 1.58819, 0.78535, 0.21427, -1.44305, 0.22686, 0.03373, 0.01296, 0.31127, 0.2936, -0.4136, -0.28263, 0.75539, -0.43952], [0.08189, -0.6542, 0.16655, -0.19589, -1.06646, -1.37566, -0.47929, 1.06894, -0.04564, -0.05655, 1.09265, 0.15549, 0.03485, -0.97276, 0.26453, 0.26662], [-0.65131, -0.71907, 0.69069, -1.74536, -0.44556, -2.82768, 0.23693, 2.88175, 2.49289, 0.56953, 0.69125, -0.44683, -0.57709, 0.96128, 0.37149, 0.49832], [0.72974, -0.20597, -1.82205, 1.11961, -0.90158, -0.21001, -0.70346, 0.13746, -1.95472, -0.54927, -1.01181, 0.58351, 0.85081, -1.06257, -0.44421, 0.67052], [0.15444, -0.95875, 0.56973, 0.13188, 1.20445, -1.25796, 0.18052, 0.3073, -0.33087, -0.43184, -0.41057, 0.61993, -0.00953, 1.17434, 0.42182, 0.09932], [-0.63309, 0.29716, 1.2535, 0.83094, 0.20981, 0.27658, -0.19808, 1.17469, 0.66958, 0.23492, 0.1739, -0.64366, 0.17245, 0.69534, 0.23095, -0.262]], "Ur": [[-0.77633, -0.68153, 0.46753, -0.24796, 1.62385, 0.58213, 0.52639, 0.57027, 0.31733, 0.00551, 0.25395, 0.6716, 0.12739, 0.20148, 0.64494, 0.66457], [-0.24861, 0.2628, 0.06934, 0.3784, -0.40285, 0.16145, -0.34584, -2.29386, 0.10478, -0.72742, 0.43409, 0.06221, -0.77635, -0.79539, -0.21287, 0.28928], [-1.36308, -0.82722, 0.22851, -0.4171, -0.20345, -0.92619, 0.33595, 0.32116, 0.06696, -0.02799, -0.92108, 0.02896, -1.13201, 0.55451, -0.4689, 0.12352], [-0.77476, 0.42424, 0.49594, 0.10712, 0.07816, -1.02436, -0.48267, -1.10446, -0.34658, 0.44522, -0.16352, 0.05604, -0.813, -1.66865, 0.13087, -0.00135], [-0.10761, 0.53739, -0.48399, -0.22156, -0.31137, 0.56968, 0.9578, -0.79471, 0.85386, -0.18098, 0.57664, 0.27413, -0.56181, -1.05165, 0.98402, -0.99525], [0.40398, -0.27848, 0.20856, 0.98563, -0.81082, -0.4015, -0.99277, 0.41608, -0.18172, 0.76024, -0.68876, -0.18596, 0.14819, 0.80555, 0.20844, 0.30552], [0.44728, 0.57469, 0.68327, -1.83027, -0.04996, 0.59894, -0.19847, -0.07235, -0.06736, -0.20969, -0.17862, -0.45467, -0.58288, 0.56403, -0.52202, -0.8067], [0.60583, -0.3214, -0.16685, 0.55565, 0.32421, -0.78056, 0.88427, 0.10283, -0.20495, -0.47224, -0.0462, 0.31632, 0.23525, 0.42153, -0.20356, 1.28834], [1.73653, 0.34783, 0.14686, 0.17337, 0.42342, -1.4271, -0.01031, 0.53622, -1.12646, 0.70382, -0.73156, -0.13004, 0.72362, -0.17883, -0.32481, 1.12799], [-0.17654, 1.09453, -0.47059, 0.43214, 0.03231, 0.33581, -0.39502, 2.80381, 0.24325, -0.3139, -0.04658, 0.01295, -0.25113, 0.09547, -0.48195, 0.00958], [0.61526, -0.56754, -0.11375, -0.40152, -0.94578, -0.04201, -0.26161, 1.82295, 0.31476, 0.1441, -0.88081, -0.47652, -0.56292, 0.00292, -0.40964, 0.84137], [0.88509, -0.66311, 0.27593, 0.22037, -0.39009, 0.3812, 0.60902, -0.14348, -1.17263, -0.10649, 0.17998, -0.99782, 0.24511, 0.93888, 0.6725, -0.34957], [0.68884, -0.86725, -0.49321, 0.58842, 0.53062, -0.11448, -0.34527, 1.94442, 0.65874, -0.77364, -0.63663, 0.57814, 0.31121, 1.28605, -0.49694, 0.21067], [-0.3494, -0.1452, 0.70992, 0.09301, -0.85302, -1.62108, 0.60164, -0.15343, 0.03339, 0.23848, -0.85836, 0.97704, 0.45342, 0.27181, 1.47467, -0.46911], [0.69486, -0.57302, -0.94559, -0.9053, -0.89546, -0.01542, 0.38469, -0.9166, -0.0323, -0.04707, 1.22306, 0.76618, -0.28504, -0.33741, 0.18511, 0.18723], [0.88287, -0.23773, 0.73948, 0.35184, -0.29268, -0.31856, -0.65449, 0.58632, -0.4403, 0.54945, -0.72227, -0.59647, 0.73668, 0.16662, 0.72163, 0.42074]], "br": [0.61505, 0.09858, 0.62231, -0.18363, -0.18263, -0.68488, -0.8967, 0.4672, 0.07367, 0.3107, 0.45421, 0.31509, 0.40823, 0.06814, -0.12346, 0.24187], "Wh": [[0.13908, 0.74044, -0.61195, -0.12653, -0.07015, 0.11716, -0.52304, 0.14761, 0.11641, -0.00031, 0.36449, 0.35576, 0.39452, 0.00171, 0.43234, 0.70253], [0.32278, 0.14391, -0.80813, 0.16348, 0.00307, -0.30864, -0.34744, -0.7493, -0.10057, 0.02154, -0.78325, -0.00086, -0.13841, 0.88797, -0.15445, -0.00918], [1.04168, -0.08815, 0.70874, -0.53789, -0.1943, 0.46658, 0.551, -1.08285, 2.09254, -2.02354, -1.16605, -1.29928, -0.09329, 0.0364, -0.00563, 0.44457], [0.72514, -0.41753, -0.1768, -0.31985, 1.18682, 0.23183, 0.11575, -0.09801, -0.15213, -0.89678, -0.18636, 0.69364, -1.46965, -0.30471, 1.58028, 0.28823], [0.11171, 0.88914, 0.19734, -0.73136, 0.3169, -1.15248, -0.51645, 0.21253, -0.05464, -0.49056, 0.0628, 0.87543, 0.74274, -0.54178, 0.91449, -0.05897], [0.3225, -1.14951, -0.16103, -0.61735, -0.57814, 0.35313, 0.04449, 0.36738, 0.9872, -0.55611, 0.72334, 0.14268, -0.38247, 0.19469, -0.68858, 0.86386]], "Uh": [[0.06281, 0.18297, -0.37325, -1.222, 0.60958, 0.26678, 0.18645, -0.80598, -0.13705, -0.0695, -0.21976, 0.42264, 0.09712, 0.1343, 0.05045, 0.13436], [0.54886, 0.82533, 0.15465, 0.15241, 0.51804, 0.71881, 1.09445, -0.64522, -0.12452, 0.20714, 0.5167, -0.75805, 0.01288, -1.37871, 0.47827, -0.01588], [0.38911, 0.3142, 0.65202, 0.30884, 0.45059, -1.02545, 0.17658, -0.54732, -0.51611, -0.02387, 0.40215, -0.0774, -0.99541, 0.07672, 1.06543, -0.68083], [-0.42554, -1.25285, 0.44211, -0.13145, 1.05614, 0.26908, -0.70663, 0.87915, 0.51534, -0.48605, -0.1695, -0.46689, -0.52604, 0.20036, -0.79443, 0.7107], [0.94537, -0.3725, -0.0704, -0.74705, 0.08307, -0.7136, -0.02179, 0.20274, -0.02742, 0.25967, -0.90977, -0.57204, 0.9104, -0.4846, -0.48018, 0.44828], [-0.24122, -0.49746, -0.94314, 0.62533, -0.5885, 0.44922, 0.03772, 0.69477, -0.72675, -0.15897, 0.80852, 0.11231, -0.3202, 0.64157, 0.07313, -0.13956], [-0.11888, -0.23452, -0.26804, 0.394, 0.25075, 0.69301, 0.52317, 0.42557, 0.31731, 0.55568, 0.87646, -0.25042, -0.65698, -0.8594, 0.42509, 0.01677], [0.71473, -0.42435, -0.29266, -0.81073, -0.35356, -0.13621, -0.25896, 1.01045, -1.3029, -0.2089, 0.07786, -0.12695, 1.15848, -1.2496, 0.06775, -0.39998], [0.10564, -0.42861, 0.40706, -0.35956, 0.30641, 0.00099, 0.44904, -0.47302, -0.1229, -1.03134, -0.74991, -0.2968, 0.08654, 0.72844, 0.48765, -0.07421], [-0.93258, 0.03714, 0.73751, 0.68465, -0.66652, -0.69357, 0.6963, -0.21821, 0.84158, -0.03024, 0.61883, 0.01893, -0.86866, 1.18238, -0.84325, -0.05148], [0.09691, -0.10378, -0.03815, -0.55053, -0.386, -0.20195, -0.63861, -0.35916, 0.05409, -0.29169, -0.7054, 0.46319, -0.65646, -0.08744, -0.31789, 0.53028], [-0.22817, 1.3593, -0.16818, -0.39078, -0.3381, -0.63389, 0.74477, -0.24438, 0.20207, 1.11836, -0.32473, 0.95897, 0.16195, 0.1786, -0.23504, 0.2868], [-0.35506, -0.00289, -0.16393, 0.20001, -1.82682, -1.41517, 1.11319, 0.72952, 1.34065, 0.45805, -0.59841, -0.3194, -0.14224, -0.7509, -0.14882, -0.51692], [0.02569, -0.5116, 0.05221, -0.30223, -0.24263, 0.3169, 0.01759, 0.50182, 1.55691, -0.82812, 0.3282, 0.19845, 0.32344, 0.42628, 0.59124, 0.09759], [0.56196, 0.15234, -0.50257, -0.18355, 0.33666, -0.26517, 0.03121, -0.927, -0.7518, 0.45078, 0.13018, 0.24869, 1.52448, -0.23165, 0.58854, 0.20677], [-0.04798, 0.09946, 0.314, 0.39738, 0.3964, 1.31741, -0.4999, -0.24194, 0.21757, -0.34846, -0.44981, 0.16596, -0.51141, 0.5879, 0.02145, 0.84771]], "bh": [0.28627, -0.35252, 0.22913, 0.34253, -0.24371, -0.03637, -0.59808, -0.0351, 0.23152, -0.32927, 0.33998, -0.17601, -0.38106, 0.35715, 0.07471, 0.8408], "Wo": [-1.36606, 0.10504, 0.06499, 0.47985, -1.45497, -0.57329, 0.85954, 1.64792, 0.54244, 0.36881, 0.77203, 0.11076, -0.71277, 0.4675, -0.65882, -0.54707], "bo": -0.37174};
+const H = W.bz.length;
+const sig = x => 1 / (1 + Math.exp(-x));
+function step(x, h) {
+  const z = [], r = [], out = [];
+  for (let j = 0; j < H; j++) {
+    let a = W.bz[j], b = W.br[j];
+    for (let i = 0; i < x.length; i++) { a += x[i] * W.Wz[i][j]; b += x[i] * W.Wr[i][j]; }
+    for (let k = 0; k < H; k++) { a += h[k] * W.Uz[k][j]; b += h[k] * W.Ur[k][j]; }
+    z.push(sig(a)); r.push(sig(b));
+  }
+  for (let j = 0; j < H; j++) {
+    let c = W.bh[j];
+    for (let i = 0; i < x.length; i++) c += x[i] * W.Wh[i][j];
+    for (let k = 0; k < H; k++) c += r[k] * h[k] * W.Uh[k][j];
+    out.push((1 - z[j]) * h[j] + z[j] * Math.tanh(c));
+  }
+  let p = W.bo; for (let j = 0; j < H; j++) p += out[j] * W.Wo[j];
+  return [out, sig(p)];
+}
+const $ = id => document.getElementById(id);
+const DOY = { 5: 135, 6: 166, 7: 196, 8: 227, 9: 258 };
+const cosd = (hr, peak) => Math.cos(2 * Math.PI * (hr - peak) / 24);
+
+function scenario() {
+  const month = +$('month').value, now = +$('hour').value, T = +$('temp').value, Hm = +$('hum').value, rainAgo = +$('rain').value;
+  const sunset = 18.55 + 1.4 * Math.cos(2 * Math.PI * (DOY[month] - 173) / 365);
+  const N = 72, rows = [];
+  for (let k = N - 1; k >= 0; k--) {           // k hours ago
+    const hr = ((now - k) % 24 + 24) % 24;
+    const t = T + 5 * (cosd(hr, 15) - cosd(now % 24, 15));
+    const rain = rainAgo === 0 ? (k <= 3 ? 1 : 0) : rainAgo > 0 ? (k >= rainAgo && k <= rainAgo + 3 ? 1 : 0) : 0;
+    let h = Hm - 2.56 * (t - T) + 6 * (cosd(hr, 4) - cosd(now % 24, 4)) + 12 * (rain - (rainAgo === 0 ? 1 : 0));
+    h = Math.max(30, Math.min(100, h));
+    const lux = hr <= 5 ? 0 : Math.max(0, Math.min(1, (sunset - hr) / 1.5));
+    rows.push({ k, hr, rain, x: [(t - 22) / 6, (h - 70) / 15, rain, lux, Math.sin(2 * Math.PI * hr / 24), Math.cos(2 * Math.PI * hr / 24)] });
+  }
+  let h = new Array(H).fill(0); const series = [];
+  for (const row of rows) { const [nh, p] = step(row.x, h); h = nh; series.push({ ...row, p }); }
+  return { series, now, sunset, rainNow: rainAgo === 0 };
+}
+const fmtHour = v => String(v % 24).padStart(2, '0') + ':00';
+function render() {
+  $('month-o').textContent = $('month').value + '월';
+  $('hour-o').textContent = fmtHour(+$('hour').value);
+  $('temp-o').textContent = (+$('temp').value).toFixed(1) + '℃';
+  $('hum-o').textContent = $('hum').value + '%';
+  const { series, now, sunset, rainNow } = scenario();
+  const last = series[series.length - 1], p = last.p, hr = now % 24;
+  const inTime = hr >= 19 && hr <= 23;
+  let level, why;
+  if (rainNow) { level = 0; why = '<b>비가 와서 소등</b> · 안전 규칙이 AI보다 먼저 적용됩니다.'; }
+  else if (!inTime) { level = 0; why = '<b>운영 시간(19:00~23:59) 밖이라 소등</b> · GRU 계산값은 참고용입니다.'; }
+  else if (p >= 0.4) { level = 2; why = '<b>출현율 40% 이상 → 고출력</b> · 날벌레가 몰리는 시간대로 판단했습니다.'; }
+  else if (p >= 0.1) { level = 1; why = '<b>출현율 10~40% → 저출력</b>'; }
+  else { level = 0; why = '<b>출현율 10% 미만 → 소등</b> · 켜도 모일 벌레가 거의 없다고 판단했습니다.'; }
+  const ss = Math.floor(sunset), sm = Math.round((sunset - ss) * 60);
+  why += ` 이 달의 일몰은 약 ${ss}:${String(sm).padStart(2, '0')}입니다.`;
+  $('pct').textContent = Math.round(p * 100) + '%';
+  const pill = $('pill'); pill.className = 'pill l' + level; pill.textContent = ['소등', '저출력', '고출력'][level];
+  $('why').innerHTML = why;
+  drawChart(series.slice(-24));
+}
+function drawChart(s) {
+  const svg = $('chart'), x0 = 34, x1 = 548, y0 = 14, y1 = 160, w = (x1 - x0) / (s.length - 1);
+  const X = i => x0 + i * w, Y = v => y1 - v * (y1 - y0);
+  let g = '';
+  s.forEach((d, i) => { if (d.hr >= 19 && d.hr <= 23) g += `<rect x="${X(i) - w / 2}" y="${y0}" width="${w}" height="${y1 - y0}" fill="var(--line)" opacity=".55"/>`; });
+  s.forEach((d, i) => { if (d.rain) g += `<rect x="${X(i) - w / 2}" y="${y1 - 8}" width="${w}" height="8" fill="var(--rain)"/>`; });
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => { g += `<line x1="${x0}" x2="${x1}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${x0 - 6}" y="${Y(v) + 3}" text-anchor="end">${v * 100}%</text>`; });
+  [0.1, 0.4].forEach(v => { g += `<line x1="${x0}" x2="${x1}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--uv)" stroke-dasharray="3 3" stroke-width="1" opacity=".6"/>`; });
+  const pts = s.map((d, i) => `${X(i).toFixed(1)},${Y(d.p).toFixed(1)}`).join(' ');
+  g += `<polyline points="${x0},${y1} ${pts} ${x1},${y1}" fill="var(--uv)" opacity=".12"/>`;
+  g += `<polyline points="${pts}" fill="none" stroke="var(--uv)" stroke-width="2.2" stroke-linejoin="round"/>`;
+  g += `<circle cx="${X(s.length - 1)}" cy="${Y(s[s.length - 1].p)}" r="4" fill="var(--uv)"/>`;
+  s.forEach((d, i) => { if (i % 4 === 3 || i === s.length - 1) g += `<text x="${X(i)}" y="${y1 + 16}" text-anchor="middle">${String(d.hr).padStart(2, '0')}시</text>`; });
+  g += `<text x="${x1}" y="${y1 + 30}" text-anchor="end">← 24시간 전 · 지금 →</text>`;
+  svg.innerHTML = g;
+}
+const PRESETS = { peak: { month: 7, hour: 21, temp: 27, hum: 68, rain: -1 }, after: { month: 7, hour: 21, temp: 26, hum: 75, rain: 1 }, humid: { month: 7, hour: 21, temp: 26, hum: 94, rain: -1 } };
+document.querySelectorAll('.presets button').forEach(b => b.addEventListener('click', () => {
+  const v = PRESETS[b.dataset.p]; for (const k in v) $(k).value = v[k]; render();
+}));
+['month', 'hour', 'temp', 'hum', 'rain'].forEach(id => $(id).addEventListener('input', render));
+document.querySelectorAll('[role=tab]').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('[role=tab]').forEach(o => { o.setAttribute('aria-selected', o === t); $(o.getAttribute('aria-controls')).hidden = o !== t; });
+}));
+document.querySelectorAll('.copy').forEach(b => b.addEventListener('click', () => {
+  const pre = b.nextElementSibling, txt = pre.innerText;
+  const done = () => { b.textContent = '복사됨'; setTimeout(() => b.textContent = '복사', 1500); };
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(done).catch(() => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = '선택됨 · Ctrl+C'; });
+}));
+render();
+</script>
+
+</body>
+</html>
